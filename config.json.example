@@ -1,0 +1,11 @@
+{
+  "DISCORD_BOT_TOKEN": "your_bot_token_here",
+  "GUILD_ID": "",
+  "TARGET_USER_ID": "123456789012345678",
+  "TARGET_USERNAME": "",
+  "TARGET_CHANNEL_ID": "987654321098765432",
+  "MESSAGE_TEXT": "Welcome back! This is a repeated greeting.",
+  "SEND_COUNT": 3,
+  "DELAY_MS": 1500,
+  "COOLDOWN_SECONDS": 60
+}

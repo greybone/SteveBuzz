@@ -1,0 +1,19 @@
+{
+  "name": "stevebuzz-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that detects specific user join and sends repeated messages to a channel",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["discord", "bot", "guildMemberAdd"],
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  }
+}
