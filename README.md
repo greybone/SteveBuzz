@@ -1,13 +1,13 @@
 # SteveBuzz Discord Bot
 
-Bot Discord yang mendeteksi saat user dengan username/ID tertentu bergabung ke server (`guildMemberAdd`), lalu mengirim pesan berulang sebanyak N kali ke channel yang dikonfigurasi. Semua parameter (user target, channel target, isi pesan, jumlah pengiriman, delay, cooldown) dapat diatur via **ENV** atau **config.json** tanpa mengubah kode.
+Bot Discord yang mendeteksi saat **member (lama atau baru) masuk ke voice channel** — user yang cocok dengan TARGET_USER_ID/TARGET_USERNAME masuk ke suatu (atau satu) voice channel, lalu bot mengirim pesan berulang ke **channel teks** yang dikonfigurasi. Semua parameter dapat diatur via **ENV** atau **config.json** tanpa mengubah kode.
 
 ## Fitur
 
-- **Trigger:** Event `guildMemberAdd` (member join server).
-- **Match:** Prioritas `TARGET_USER_ID`; fallback `TARGET_USERNAME` (case-insensitive).
-- **Aksi:** Mengirim `MESSAGE_TEXT` ke `TARGET_CHANNEL_ID` sebanyak `SEND_COUNT` kali dengan jeda `DELAY_MS` per pesan.
-- **Cooldown:** User yang sama join lagi dalam `COOLDOWN_SECONDS` tidak memicu pengiriman ulang.
+- **Trigger:** Saat member masuk ke voice channel (event `voiceStateUpdate`).
+- **Match:** User yang masuk harus cocok `TARGET_USER_ID` atau `TARGET_USERNAME` (case-insensitive). Opsional: hanya trigger jika masuk ke `TARGET_VOICE_CHANNEL_ID` (kosong = semua voice channel).
+- **Aksi:** Mengirim `MESSAGE_TEXT` ke `TARGET_CHANNEL_ID` (channel **teks**) sebanyak `SEND_COUNT` kali dengan jeda `DELAY_MS` per pesan.
+- **Cooldown:** User yang sama masuk voice lagi dalam `COOLDOWN_SECONDS` tidak memicu pengiriman ulang.
 - **Keamanan:** Cek permission (VIEW_CHANNEL + SEND_MESSAGES), penanganan rate limit (429), logging jelas.
 
 ---
@@ -20,8 +20,8 @@ Bot Discord yang mendeteksi saat user dengan username/ID tertentu bergabung ke s
 4. Klik **Add Bot**.
 5. Di **Token**, klik **Reset Token** lalu **Copy** — simpan sebagai `DISCORD_BOT_TOKEN` (jangan dibagikan).
 6. Nonaktifkan **Public Bot** jika bot hanya untuk server Anda.
-7. Aktifkan **Privileged Gateway Intents**:
-   - **SERVER MEMBERS INTENT** — wajib agar event `guildMemberAdd` diterima.
+
+(Tidak perlu Privileged Gateway Intents untuk trigger voice channel; bot memakai **Guild Voice States** yang standar.)
 
 ---
 
@@ -88,7 +88,7 @@ node index.js
 npm start
 ```
 
-Bot akan login dan siap. Saat user yang cocok join, bot mengirim pesan ke channel target sesuai konfigurasi.
+Bot akan login dan siap. Saat **user yang cocok masuk ke voice channel**, bot mengirim pesan ke channel teks target sesuai konfigurasi.
 
 ---
 
@@ -198,7 +198,7 @@ Menjalankan `node index.js` di komputer Anda hanya aktif selama komputer menyala
 
 | Langkah | Keterangan |
 |--------|------------|
-| 1. Buat bot | Developer Portal → New Application → Bot → copy token, aktifkan **SERVER MEMBERS INTENT**. |
+| 1. Buat bot | Developer Portal → New Application → Bot → copy token. |
 | 2. Invite ke server | OAuth2 → URL Generator (scope: bot, permission: View Channels + Send Messages) → buka URL, pilih server. |
 | 3. Konfigurasi | Isi `.env` atau env vars di hosting: `DISCORD_BOT_TOKEN`, `TARGET_CHANNEL_ID`, `MESSAGE_TEXT`, dll. |
 | 4. Jalankan / deploy | Lokal: `npm start`. Cloud: deploy ke Railway / Render / VPS seperti di atas. |
@@ -207,7 +207,71 @@ Setelah bot di-invite ke server (langkah 2) dan proses jalan (lokal atau cloud),
 
 ---
 
-## 6. Contoh Konfigurasi
+## 6. Troubleshooting: Bot Sudah Install & Env Tapi Belum Jalan / Tidak Bereaksi
+
+Cek poin berikut satu per satu.
+
+### 1. Cek log saat startup (lokal atau Railway)
+
+- **Lokal:** Jalankan `npm start` di terminal, perhatikan pesan error.
+- **Railway:** Buka project → service → tab **Deployments** → klik deployment terbaru → tab **Logs**.
+
+**Jika ada error:**
+
+- `Configuration errors: DISCORD_BOT_TOKEN is required`  
+  → Env `DISCORD_BOT_TOKEN` tidak terbaca. Di Railway pastikan nama variable **persis** `DISCORD_BOT_TOKEN` (huruf besar, underscore). Setelah ubah Variables, redeploy.
+- `Configuration errors: TARGET_CHANNEL_ID is required`  
+  → Isi `TARGET_CHANNEL_ID` di env.
+- `At least one of TARGET_USER_ID or TARGET_USERNAME is required`  
+  → Isi salah satu (atau keduanya) `TARGET_USER_ID` atau `TARGET_USERNAME`.
+- `MESSAGE_TEXT cannot be empty`  
+  → Isi `MESSAGE_TEXT` dengan teks apa pun.
+- `Login failed: Incorrect token` / `401`  
+  → Token salah atau sudah di-reset. Copy ulang token dari Discord Developer Portal → Bot → Reset Token.
+
+**Jika tidak ada error:** Di log harus ada baris seperti:
+`[startup] Config loaded: TARGET_CHANNEL_ID=..., token present=true`  
+dan  
+`[ready] Logged in as NamaBot#1234`.  
+Jika `token present=false` atau `TARGET_CHANNEL_ID=(empty)` → env di Railway belum ke-load; cek nama variable dan **Redeploy** setelah mengubah Variables.
+
+### 2. Bot jalan (ready) tapi tidak bereaksi saat user join
+
+- **SERVER MEMBERS INTENT** — tidak wajib untuk trigger voice channel (hanya untuk event member join server).
+- **User yang masuk voice harus cocok dengan target**  
+  Bot hanya bereaksi kalau user yang **masuk voice channel** punya **User ID** sama dengan `TARGET_USER_ID` **atau** **Username** (tanpa tag) sama dengan `TARGET_USERNAME`. Pastikan isi env sesuai. Lebih stabil pakai User ID (klik kanan user → Copy ID, perlu Developer Mode).
+- **TARGET_VOICE_CHANNEL_ID**  
+  Kalau diisi, bot hanya trigger ketika user masuk ke **voice channel** dengan ID itu. Kosong = trigger saat user masuk **ke voice channel mana pun**.
+- **GUILD_ID**  
+  Kalau diisi, bot hanya bereaksi di server dengan ID itu. Kosong = semua server.
+- **Cooldown**  
+  User yang sama masuk voice lagi dalam `COOLDOWN_SECONDS` tidak akan memicu pesan lagi. Coba dengan user lain atau tunggu cooldown habis.
+
+### 3. Bot kirim pesan gagal (permission / channel)
+
+Di log bisa muncul:
+
+- `Bot lacks VIEW_CHANNEL or SEND_MESSAGES`  
+  → Di server Discord, beri role bot permission **View Channel** dan **Send Messages** di channel yang dipakai (atau di level server).
+- `Channel ... not found`  
+  → `TARGET_CHANNEL_ID` salah atau bot tidak ada di server yang punya channel itu. Pastikan bot sudah di-invite ke server dan ID channel benar (klik kanan channel → Copy ID).
+
+### 4. Ringkasan checklist
+
+| Cek | Yang dicek |
+|-----|------------|
+| Env di Railway | Nama persis: `DISCORD_BOT_TOKEN`, `TARGET_CHANNEL_ID`, `MESSAGE_TEXT`, dan salah satu `TARGET_USER_ID` / `TARGET_USERNAME`. |
+| Token | Copy ulang dari Developer Portal → Bot, tanpa spasi di awal/akhir. |
+| Bot di server | Bot sudah di-invite ke server (OAuth2 URL) dan ada di member list. |
+| Channel & permission | Bot punya akses View Channel + Send Messages di **channel teks** target. |
+| User target | User ID atau Username yang **masuk voice channel** benar-benar sama dengan yang di env. |
+| Voice channel (opsional) | Kalau pakai `TARGET_VOICE_CHANNEL_ID`, pastikan ID voice channel-nya benar. |
+
+Setelah ubah env atau intent, **Redeploy** di Railway agar dipakai saat jalan.
+
+---
+
+## 7. Contoh Konfigurasi
 
 ### Contoh .env
 
@@ -216,6 +280,7 @@ DISCORD_BOT_TOKEN=your_bot_token_here
 GUILD_ID=
 TARGET_USER_ID=123456789012345678
 TARGET_USERNAME=
+TARGET_VOICE_CHANNEL_ID=
 TARGET_CHANNEL_ID=987654321098765432
 MESSAGE_TEXT=Welcome back! Pesan ini dikirim 3 kali.
 SEND_COUNT=3
@@ -231,6 +296,7 @@ COOLDOWN_SECONDS=60
   "GUILD_ID": "",
   "TARGET_USER_ID": "123456789012345678",
   "TARGET_USERNAME": "",
+  "TARGET_VOICE_CHANNEL_ID": "",
   "TARGET_CHANNEL_ID": "987654321098765432",
   "MESSAGE_TEXT": "Welcome back! Pesan ini dikirim 3 kali.",
   "SEND_COUNT": 3,
@@ -247,7 +313,8 @@ COOLDOWN_SECONDS=60
 | `GUILD_ID` | Tidak | Jika diisi, bot hanya bereaksi di server ini. Kosong = semua server. |
 | `TARGET_USER_ID` | Salah satu | User ID Discord (prioritas). |
 | `TARGET_USERNAME` | Salah satu | Username (fallback, case-insensitive). |
-| `TARGET_CHANNEL_ID` | Ya | ID channel tempat pesan dikirim. |
+| `TARGET_VOICE_CHANNEL_ID` | Tidak | Jika diisi, hanya trigger saat user masuk voice channel ini. Kosong = trigger di **semua** voice channel. |
+| `TARGET_CHANNEL_ID` | Ya | ID **channel teks** tempat pesan dikirim. |
 | `MESSAGE_TEXT` | Ya | Teks pesan yang dikirim berulang. |
 | `SEND_COUNT` | Tidak | Jumlah pengiriman (default: 1). |
 | `DELAY_MS` | Tidak | Jeda antar pesan dalam ms (default: 1000). |
@@ -258,19 +325,19 @@ Aktifkan **Developer Mode** di Discord (Settings → App Settings → Advanced �
 
 ---
 
-## 7. Struktur Kode
+## 8. Struktur Kode
 
-- **index.js** — Entry point: client Discord, listener `guildMemberAdd`, match target, cooldown, pemanggilan helper kirim pesan.
+- **index.js** — Entry point: client Discord, listener `voiceStateUpdate` (masuk voice channel), match target, cooldown, kirim pesan ke channel teks.
 - **config.js** — Load config dari `.env` + `config.json`, validasi field wajib.
 - **Helper** — `sendNMessagesWithDelay()` di `index.js`: kirim N pesan dengan delay dan penanganan rate limit (429) serta error permission/channel.
 
 ---
 
-## 8. Acceptance Criteria (Ringkasan)
+## 9. Acceptance Criteria (Ringkasan)
 
-- Saat member join dan cocok dengan `TARGET_USER_ID` atau `TARGET_USERNAME`, bot mengirim pesan ke `TARGET_CHANNEL_ID` sebanyak `SEND_COUNT`.
+- Saat member yang cocok **masuk ke voice channel** (lama atau baru), bot mengirim pesan ke `TARGET_CHANNEL_ID` (teks) sebanyak `SEND_COUNT`.
 - Semua parameter dapat diubah tanpa mengedit kode inti (via .env / config.json).
-- Ada cooldown agar join berulang tidak spam.
+- Ada cooldown agar masuk voice berulang tidak spam.
 - Bot tidak crash saat channel tidak ditemukan / permission kurang / rate limit; error dilog dengan jelas.
 
 ---

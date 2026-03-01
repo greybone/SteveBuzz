@@ -1,11 +1,12 @@
 /**
  * SteveBuzz Discord Bot
- * Listens for guildMemberAdd; when a member matches TARGET_USER_ID or TARGET_USERNAME,
- * sends MESSAGE_TEXT to TARGET_CHANNEL_ID SEND_COUNT times with DELAY_MS between sends.
- * Cooldown prevents re-triggering for the same user within COOLDOWN_SECONDS.
+ * Listens for voice channel join (voiceStateUpdate): when a member — lama atau baru —
+ * yang cocok TARGET_USER_ID/TARGET_USERNAME masuk ke voice channel (atau voice channel tertentu),
+ * bot mengirim MESSAGE_TEXT ke TARGET_CHANNEL_ID (channel teks) sebanyak SEND_COUNT kali.
+ * Cooldown mencegah trigger berulang untuk user yang sama dalam COOLDOWN_SECONDS.
  */
 
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const { loadConfig, validateConfig } = require('./config.js');
 
 // --- Config & validation ---
@@ -15,6 +16,14 @@ if (validationErrors.length > 0) {
   console.error('[startup] Configuration errors:', validationErrors.join('; '));
   process.exit(1);
 }
+
+// Debug: tampilkan config yang terbaca (tanpa token) — bantu cek env di Railway/local
+console.log('[startup] Config loaded: TARGET_CHANNEL_ID=' + (config.targetChannelId ? config.targetChannelId : '(empty)') +
+  ', TARGET_VOICE_CHANNEL_ID=' + (config.targetVoiceChannelId || '(any)') +
+  ', TARGET_USER_ID=' + (config.targetUserId || '(empty)') +
+  ', TARGET_USERNAME=' + (config.targetUsername || '(empty)') +
+  ', MESSAGE_TEXT length=' + config.messageText.length +
+  ', token present=' + !!config.token);
 
 // --- Cooldown: userId -> last trigger timestamp (ms) ---
 const cooldownUntilByUser = new Map();
@@ -102,9 +111,8 @@ function sleep(ms) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
   ],
-  partials: [Partials.GuildMember],
 });
 
 client.once('ready', () => {
@@ -113,19 +121,30 @@ client.once('ready', () => {
     const guild = client.guilds.cache.get(config.guildId);
     console.log(`[ready] Guild filter: ${config.guildId} ${guild ? `(${guild.name})` : '(not in cache)'}`);
   }
-  console.log(`[ready] Target channel: ${config.targetChannelId}, send count: ${config.sendCount}, delay: ${config.delayMs}ms, cooldown: ${config.cooldownSeconds}s`);
+  console.log(`[ready] Trigger: user joins voice channel${config.targetVoiceChannelId ? ` (channel ${config.targetVoiceChannelId})` : ' (any)'} → send to text channel ${config.targetChannelId}, count=${config.sendCount}, delay=${config.delayMs}ms, cooldown=${config.cooldownSeconds}s`);
 });
 
-client.on('guildMemberAdd', async (member) => {
-  const guildId = member.guild?.id;
-  const userId = member.user?.id;
-  const username = member.user?.username ?? 'unknown';
+// Trigger: member (lama atau baru) masuk ke voice channel
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  // Hanya saat user *masuk* ke suatu voice channel (bukan pindah/keluar)
+  if (!newState.channelId) return; // keluar dari voice
+  if (oldState.channelId === newState.channelId) return; // tidak ada perubahan channel
+
+  const member = newState.member;
+  if (!member?.user) return;
+
+  const guildId = newState.guild?.id;
+  const userId = member.user.id;
+  const username = member.user.username ?? 'unknown';
 
   if (config.guildId && guildId !== config.guildId) return;
 
+  // Opsional: hanya trigger kalau masuk ke voice channel tertentu
+  if (config.targetVoiceChannelId && newState.channelId !== config.targetVoiceChannelId) return;
+
   if (!matchesTarget(member)) return;
 
-  console.log(`[trigger] Matched member join: ${username} (${userId}) in guild ${guildId}`);
+  console.log(`[trigger] Matched voice join: ${username} (${userId}) joined voice channel ${newState.channelId} in guild ${guildId}`);
 
   if (isOnCooldown(userId)) {
     console.log(`[trigger] User ${userId} on cooldown; skipping.`);
